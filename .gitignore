@@ -1,2 +1,6 @@
 *.d
 *.o
+hostapd/.config
+hostapd/hostapd
+hostapd/hostapd_cli
+hostapd/hostapd.conf
