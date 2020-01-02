@@ -19,6 +19,7 @@ multi_psk_line_t *multi_psk_enum(const uint8_t mic[16], const uint8_t ANonce[128
 void multi_psk_fill_block(multi_psk_line_t *block, size_t num_lines, uint32_t block_id,
                           const uint8_t *pre_psk, size_t pre_psk_len, const uint8_t *ssid, size_t ssid_len);
 // For Mode A, the block_id is constant 0, this function only register the block pointer and reture immediately.
+// Mode A should only be called once.
 // For Mode B, the block_id indicate the day of expire, this function will generate the whole block and then return.
 
 #endif // WPA_AUTH_MULTI_H

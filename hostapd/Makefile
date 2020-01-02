@@ -6,6 +6,8 @@ ifndef CFLAGS
 CFLAGS = -MMD -O2 -Wall -g
 endif
 
+LIBS += -lpthread
+
 ifdef LIBS
 # If LIBS is set with some global build system defaults, clone those for
 # LIBS_c, LIBS_h, and LIBS_n to cover hostapd_cli, hlr_auc_gw, and
