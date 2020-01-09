@@ -93,12 +93,18 @@ struct hostapd_ssid {
 	unsigned int wpa_passphrase_set:1;
 	unsigned int wpa_psk_set:1;
 
+    // ####### For WPA-MULTI-PSK #######
+    unsigned int wpa_pre_psk_set:1;
+
 	char vlan[IFNAMSIZ + 1];
 	secpolicy security_policy;
 
 	struct hostapd_wpa_psk *wpa_psk;
 	char *wpa_passphrase;
 	char *wpa_psk_file;
+
+    // ####### For WPA-MULTI-PSK #######
+    char *wpa_pre_psk;
 
 	struct hostapd_wep_keys wep;
 

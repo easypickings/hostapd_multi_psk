@@ -1067,6 +1067,8 @@ static int hostapd_config_check_bss(struct hostapd_bss_config *bss,
 	if (full_config && bss->wpa && (bss->wpa_key_mgmt & WPA_KEY_MGMT_PSK) &&
 	    bss->ssid.wpa_psk == NULL && bss->ssid.wpa_passphrase == NULL &&
 	    bss->ssid.wpa_psk_file == NULL &&
+        // ####### For WPA-MULTI-PSK #######
+        bss->ssid.wpa_pre_psk == NULL &&
 	    (bss->wpa_psk_radius != PSK_RADIUS_REQUIRED ||
 	     bss->macaddr_acl != USE_EXTERNAL_RADIUS_AUTH)) {
 		wpa_printf(MSG_ERROR, "WPA-PSK enabled, but PSK or passphrase "

@@ -2932,6 +2932,26 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 		os_free(bss->ssid.wpa_passphrase);
 		bss->ssid.wpa_passphrase = NULL;
 		bss->ssid.wpa_psk_set = 1;
+
+    } else if (os_strcmp(buf, "wpa_pre_psk") == 0) {
+        // ####### For WPA-MULTI-PSK #######
+        int len = os_strlen(pos);
+        if (len < 8 || len > 63) {
+            wpa_printf(MSG_ERROR, "Line %d: invalid WPA-PRE-PSK length %d (expected 8..63)",
+                   line, len);
+            return 1;
+        }
+        os_free(bss->ssid.wpa_pre_psk);
+        bss->ssid.wpa_pre_psk = os_strdup(pos);
+        if (bss->ssid.wpa_pre_psk) {
+            os_free(bss->ssid.wpa_passphrase);
+            bss->ssid.wpa_passphrase = NULL;
+            hostapd_config_clear_wpa_psk(&bss->ssid.wpa_psk);
+            bss->ssid.wpa_pre_psk_set = 1;
+        }
+
+        // multi_psk_init: can we do it elsewhere?
+        multi_psk_init(bss->ssid.wpa_pre_psk, len, bss->ssid.ssid, bss->ssid.ssid_len);
 	} else if (os_strcmp(buf, "wpa_psk_file") == 0) {
 		os_free(bss->ssid.wpa_psk_file);
 		bss->ssid.wpa_psk_file = os_strdup(pos);
