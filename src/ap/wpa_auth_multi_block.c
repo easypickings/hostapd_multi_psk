@@ -40,12 +40,39 @@ unsigned int psk_callback(SSL *ssl, const char *identity,
         unsigned char *psk, unsigned int max_psk_len)
 {
     SSL_CTX *ctx = SSL_get_SSL_CTX(ssl);
-    int server_ctx_num = 0;
-    /*
-    while(server_ctx_num < server_ctx_cnt && ctx != server_ctx_list[]);
-    printf("identity: %s, max_psk_len: %d\n", identity, max_psk_len);
-    memcpy(psk, pre_psk_hash, SHA256_DIGEST_LENGTH);*/
+    server_ctx_t *server_ctx = server_ctx_list;
+    while(server_ctx != server_ctx_list + server_ctx_cnt && ctx != server_ctx->ctx);
+    if(server_ctx == server_ctx_list + server_ctx_cnt) {
+        printf("identity: %s, no match\n", identity);
+        return 0;
+    }
+    printf("identity: %s, ctx: %ld\n", identity, server_ctx - server_ctx_list);
+    memcpy(psk, server_ctx->pre_psk_hash, SHA256_DIGEST_LENGTH);
     return SHA256_DIGEST_LENGTH;
+}
+
+struct mode_a_handler_data {
+    server_ctx_t *server_ctx;
+    uint8_t pmk[32];
+    uint32_t time;
+};
+
+static bool mode_a_handler(multi_psk_line_t *block, size_t num_lines, void *_data)
+{
+    struct mode_a_handler_data *data = _data;
+    multi_psk_line_t *i;
+    for(i = block; i < block + num_lines; i++) {
+        if(!i->is_valid) break;
+    }
+    if(i == block + num_lines) {
+        wpa_printf(MSG_ERROR, "Multi PSK: Mode A too many entries!");
+        return false;
+    }
+    i->is_valid = true;
+    i->time = data->time;
+    memcpy(i->pmk, data->pmk, 32);
+    wpa_printf(MSG_INFO, "Multi PSK: Add 1 Client!");
+    return false;
 }
 
 static void *mode_a_server(void *arg)
@@ -82,8 +109,14 @@ static void *mode_a_server(void *arg)
             continue;
         }
         char buf[100];
-        // TODO: implement Mode A Protocol
         assert(SSL_read(ssl, buf, 100) > 0);
+        struct mode_a_handler_data data;
+        uint32_t time;
+        char passphrase[100];
+        sscanf(buf, "%u %s", &time, passphrase);
+        pbkdf2_sha1(passphrase, server_ctx->ssid, server_ctx->ssid_len, 4096, data.pmk, PMK_LEN);
+        multi_psk_visit_block(&mode_a_handler, &data);
+        sprintf(buf, "Done\n");
         assert(SSL_write(ssl, buf, 100) > 0);
         SSL_shutdown(ssl);
         SSL_free(ssl);
@@ -102,7 +135,7 @@ void multi_psk_fill_block(multi_psk_line_t *block, size_t num_lines, uint32_t bl
     uint8_t hash[SHA256_DIGEST_LENGTH];
     SHA256_CTX sha256;
     if(block_id == 0) {
-        server_ctx_t *server_ctx = malloc(sizeof(server_ctx_t));
+        server_ctx_t *server_ctx = server_ctx_list + (server_ctx_cnt++);
         server_ctx->block = block;
         server_ctx->num_lines = num_lines;
         server_ctx->pre_psk = pre_psk;

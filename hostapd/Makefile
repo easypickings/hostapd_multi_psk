@@ -88,7 +88,8 @@ OBJS += ../src/ap/beacon.o
 OBJS += ../src/ap/bss_load.o
 OBJS += ../src/ap/neighbor_db.o
 OBJS += ../src/ap/rrm.o
-OBJS += ../src/ap/wpa_auth_multi_fill_block.o
+OBJS += ../src/ap/wpa_auth_multi_block.o
+OBJS += ../src/ap/wpa_auth_multi.o
 
 OBJS_c = hostapd_cli.o
 OBJS_c += ../src/common/wpa_ctrl.o
@@ -1272,7 +1273,7 @@ OBJS += ../src/fst/fst_ctrl_iface.o
 endif
 endif
 
-ALL=hostapd hostapd_cli
+ALL=hostapd hostapd_cli hostapd_wpa_multi_client
 
 all: verify_config $(ALL)
 
@@ -1328,6 +1329,11 @@ OBJS_c += ../src/utils/trace.o
 endif
 hostapd_cli: $(OBJS_c)
 	$(Q)$(CC) $(LDFLAGS) -o hostapd_cli $(OBJS_c) $(LIBS_c)
+	@$(E) "  LD " $@
+
+OBJS_wpa_multi_client = ../src/ap/wpa_auth_multi_client.o
+hostapd_wpa_multi_client: $(OBJS_wpa_multi_client)
+	$(Q)$(CC) $(LDFLAGS) -o hostapd_wpa_multi_client $(OBJS_wpa_multi_client) -lssl $(LIBS)
 	@$(E) "  LD " $@
 
 NOBJS = nt_password_hash.o ../src/crypto/ms_funcs.o $(SHA1OBJS)

@@ -3,4 +3,5 @@
 hostapd/.config
 hostapd/hostapd
 hostapd/hostapd_cli
+hostapd/hostapd_wpa_multi_client
 hostapd/hostapd.conf
