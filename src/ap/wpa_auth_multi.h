@@ -3,18 +3,25 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 typedef struct {
     uint8_t pmk[32];
     uint32_t seq;
     uint32_t time;
-    uint64_t reserved;
+    bool is_valid;
 } multi_psk_line_t;
 
 void multi_psk_init(const uint8_t *pre_psk, size_t pre_psk_len, const uint8_t *ssid, size_t ssid_len);
 
 multi_psk_line_t *multi_psk_enum(const uint8_t mic[16], const uint8_t ANonce[128], const uint8_t SNonce[128],
                                  const uint8_t AA[6], const uint8_t SPA[6]);
+
+typedef bool (*multi_psk_visit_block_handler)(multi_psk_line_t *block, size_t num_lines, void *data);
+// Return true if want to visit next block.
+
+void multi_psk_visit_block(multi_psk_visit_block_handler handler, void *data);
+// Visit Mode A block first, then Mode B blocks.
 
 void multi_psk_fill_block(multi_psk_line_t *block, size_t num_lines, uint32_t block_id,
                           const uint8_t *pre_psk, size_t pre_psk_len, const uint8_t *ssid, size_t ssid_len);
