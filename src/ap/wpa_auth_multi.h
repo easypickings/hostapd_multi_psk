@@ -30,7 +30,7 @@ typedef bool (*multi_psk_visit_block_handler)(uint32_t block_id,
 void multi_psk_visit_block(multi_psk_visit_block_handler handler, void* data);
 
 // For Mode A, the block_id is constant 0, this function only register the block
-// pointer and reture immediately. Mode A should only be called once. For Mode
+// pointer and return immediately. Mode A should only be called once. For Mode
 // B, the block_id indicate the day of expire, this function will generate the
 // whole block and then return.
 void multi_psk_fill_block(multi_psk_line_t* block, size_t num_lines,
