@@ -312,6 +312,8 @@ void ap_sta_hash_add(struct hostapd_data *hapd, struct sta_info *sta);
 void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta);
 void ap_sta_ip6addr_del(struct hostapd_data *hapd, struct sta_info *sta);
 void hostapd_free_stas(struct hostapd_data *hapd);
+void remove_sta(struct hostapd_data *hapd, struct sta_info *sta);
+void hostapd_check_stas(struct hostapd_data *hapd, uint32_t now);
 void ap_handle_timer(void *eloop_ctx, void *timeout_ctx);
 void ap_sta_replenish_timeout(struct hostapd_data *hapd, struct sta_info *sta,
 			      u32 session_timeout);

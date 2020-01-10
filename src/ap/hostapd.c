@@ -55,6 +55,7 @@
 #include "hs20.h"
 #include "airtime_policy.h"
 #include "wpa_auth_kay.h"
+#include <time.h>
 
 
 static int hostapd_flush_old_stations(struct hostapd_data *hapd, u16 reason);
@@ -611,6 +612,11 @@ static void hostapd_bss_deinit_no_free(struct hostapd_data *hapd)
 	hostapd_clear_wep(hapd);
 }
 
+void check_hapd(struct hostapd_data *hapd)
+{
+    uint32_t now = time(0) / (60 * 60);
+    hostapd_check_stas(hapd, now);
+}
 
 /**
  * hostapd_validate_bssid_configuration - Validate BSSID configuration

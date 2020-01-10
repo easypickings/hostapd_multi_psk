@@ -332,6 +332,18 @@ void wpa_auth_set_ptk_rekey_timer(struct wpa_state_machine *sm)
 	}
 }
 
+int wpa_check_sta(struct wpa_state_machine *sm, uint32_t now)
+{
+    multi_psk_line_t *wpa_line = sm->wpa_line;
+    if (os_strcmp(wpa_line->pmk, sm->PMK) || !wpa_line->is_valid){
+        return 1;
+    }
+    if(now <= wpa_line->time){
+        wpa_line->is_valid = 0;
+        return 1;
+    }
+    return 0;
+}
 
 static int wpa_auth_pmksa_clear_cb(struct wpa_state_machine *sm, void *ctx)
 {

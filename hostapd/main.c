@@ -635,6 +635,23 @@ static void hostapd_periodic(void *eloop_ctx, void *timeout_ctx)
 	hostapd_for_each_interface(interfaces, hostapd_periodic_call, NULL);
 }
 
+/*Periodic check STA; remove timeout/invalid STAs*/
+static void hostapd_check_interface(void *eloop_ctx, void *timeout_ctx)
+{
+    struct hapd_interfaces *interfaces = eloop_ctx;
+    eloop_register_timeout(HOSTAPD_CLEANUP_INTERVAL, 0,
+                   hostapd_check_interface, interfaces, NULL);
+
+    int i, j;
+    for (i=0; i<interfaces->count; ++i){
+        struct hostapd_iface *iface = interfaces->iface[i];
+        for(j=0; j<(int)iface->num_bss; ++j){
+            struct hostapd_data *hapd = iface->bss[j];
+            check_hapd(hapd);
+        }
+    }
+}
+
 
 int main(int argc, char *argv[])
 {
@@ -804,6 +821,7 @@ int main(int argc, char *argv[])
 
 	eloop_register_timeout(HOSTAPD_CLEANUP_INTERVAL, 0,
 			       hostapd_periodic, &interfaces, NULL);
+    eloop_register_timeout(100, 0, hostapd_check_interface, &interfaces, NULL);
 
 	if (fst_global_init()) {
 		wpa_printf(MSG_ERROR,

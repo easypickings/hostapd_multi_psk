@@ -1063,16 +1063,20 @@ void eloop_run(void)
 #ifdef CONFIG_ELOOP_POLL
 	int num_poll_fds;
 	int timeout_ms = 0;
+    printf("define poll\n");
 #endif /* CONFIG_ELOOP_POLL */
 #ifdef CONFIG_ELOOP_SELECT
 	fd_set *rfds, *wfds, *efds;
 	struct timeval _tv;
+    printf("define select\n");
 #endif /* CONFIG_ELOOP_SELECT */
 #ifdef CONFIG_ELOOP_EPOLL
 	int timeout_ms = -1;
+    printf("define epoll\n");
 #endif /* CONFIG_ELOOP_EPOLL */
 #ifdef CONFIG_ELOOP_KQUEUE
 	struct timespec ts;
+    printf("define kqueue\n");
 #endif /* CONFIG_ELOOP_KQUEUE */
 	int res;
 	struct os_reltime tv, now;

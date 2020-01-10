@@ -39,6 +39,7 @@
 #include "sta_info.h"
 #include "vlan.h"
 #include "wps_hostapd.h"
+#include "wpa_auth_multi.h"
 
 static void ap_sta_remove_in_other_bss(struct hostapd_data *hapd,
 				       struct sta_info *sta);
@@ -400,6 +401,31 @@ void hostapd_free_stas(struct hostapd_data *hapd)
 	}
 }
 
+void remove_sta(struct hostapd_data *hapd, struct sta_info *sta)
+{
+    unsigned int prev_val = hapd->iface->driver_ap_teardown;
+    u8 addr[ETH_ALEN];
+    memcpy(addr, sta->addr, ETH_ALEN);
+    hapd->iface->driver_ap_teardown = 1;
+    ap_free_sta(hapd, sta);
+    hostapd_drv_sta_deauth(hapd, addr, WLAN_REASON_DEAUTH_LEAVING);
+    hapd->iface->driver_ap_teardown = prev_val;
+}
+
+void hostapd_check_stas(struct hostapd_data *hapd, uint32_t now)
+{
+    struct sta_info *sta, *prev;
+    sta = hapd->sta_list;
+
+    while (sta) {
+        prev = sta;
+        sta = sta->next;
+        int res = wpa_check_sta(prev->wpa_sm, now);
+        if (res){
+            remove_sta(hapd, prev);
+        }
+    }
+}
 
 /**
  * ap_handle_timer - Per STA timer handler

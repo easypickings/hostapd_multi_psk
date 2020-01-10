@@ -10,6 +10,7 @@
 #define WPA_AUTH_I_H
 
 #include "utils/list.h"
+#include "wpa_auth_multi.h"
 
 /* max(dot11RSNAConfigGroupUpdateCount,dot11RSNAConfigPairwiseUpdateCount) */
 #define RSNA_MAX_EAPOL_RETRIES 4
@@ -23,6 +24,8 @@ struct wpa_state_machine {
 	u8 addr[ETH_ALEN];
 	u8 p2p_dev_addr[ETH_ALEN];
 	u16 auth_alg;
+
+    multi_psk_line_t *wpa_line;
 
 	enum {
 		WPA_PTK_INITIALIZE, WPA_PTK_DISCONNECT, WPA_PTK_DISCONNECTED,
