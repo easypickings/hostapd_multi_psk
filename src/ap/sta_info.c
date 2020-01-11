@@ -406,6 +406,7 @@ void remove_sta(struct hostapd_data *hapd, struct sta_info *sta)
     unsigned int prev_val = hapd->iface->driver_ap_teardown;
     u8 addr[ETH_ALEN];
     memcpy(addr, sta->addr, ETH_ALEN);
+    mlme_deletekeys_request(hapd, sta);
     hapd->iface->driver_ap_teardown = 1;
     ap_free_sta(hapd, sta);
     hostapd_drv_sta_deauth(hapd, addr, WLAN_REASON_DEAUTH_LEAVING);
@@ -415,12 +416,13 @@ void remove_sta(struct hostapd_data *hapd, struct sta_info *sta)
 void hostapd_check_stas(struct hostapd_data *hapd, uint32_t now)
 {
     struct sta_info *sta, *prev;
-    sta = hapd->sta_list;
+    sta = hapd->sta_list; 
 
     while (sta) {
         prev = sta;
         sta = sta->next;
         int res = wpa_check_sta(prev->wpa_sm, now);
+        printf("res = %d\n", res);
         if (res){
             remove_sta(hapd, prev);
         }

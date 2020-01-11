@@ -821,7 +821,7 @@ int main(int argc, char *argv[])
 
 	eloop_register_timeout(HOSTAPD_CLEANUP_INTERVAL, 0,
 			       hostapd_periodic, &interfaces, NULL);
-    eloop_register_timeout(100, 0, hostapd_check_interface, &interfaces, NULL);
+    eloop_register_timeout(5, 0, hostapd_check_interface, &interfaces, NULL);
 
 	if (fst_global_init()) {
 		wpa_printf(MSG_ERROR,
