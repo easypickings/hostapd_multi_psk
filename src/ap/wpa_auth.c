@@ -2857,10 +2857,11 @@ SM_STATE(WPA_PTK, PTKCALCNEGOTIATING)
 	mic_len = wpa_mic_len(sm->wpa_key_mgmt, sm->pmk_len);
 
     if(wpa_auth_use_multi_psk(wpa_auth)) {
-        sm->wpa_line = multi_psk_enum(sm->last_rx_eapol_key, sm->last_rx_eapol_key_len,
+        multi_psk_line_t *wpa_line = multi_psk_enum(sm->last_rx_eapol_key, sm->last_rx_eapol_key_len,
                                       sm->ANonce, sm->SNonce, sm->wpa_auth->addr, sm->addr,
                                       sm->wpa_key_mgmt, sm->pairwise);
-        if (sm->wpa_line && sm->PMK != sm->wpa_line->pmk) {
+        if (wpa_line) {
+            sm->wpa_line = wpa_line;
             pmk = sm->wpa_line->pmk;
             pmk_len = PMK_LEN;
             os_memcpy(sm->PMK, pmk, pmk_len);

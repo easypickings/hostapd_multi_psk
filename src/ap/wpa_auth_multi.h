@@ -16,9 +16,10 @@ typedef struct
 void multi_psk_init(const uint8_t* pre_psk, size_t pre_psk_len,
                     const uint8_t* ssid, size_t ssid_len);
 
-multi_psk_line_t* multi_psk_enum(const uint8_t* data, size_t data_len,
+multi_psk_line_t *multi_psk_enum(const uint8_t* data, size_t data_len,
                                  const uint8_t ANonce[128],
-                                 const uint8_t SNonce[128], const uint8_t AA[6],
+                                 const uint8_t SNonce[128],
+                                 const uint8_t AA[6],
                                  const uint8_t SPA[6],
                                  int akmp, int cipher);
 
