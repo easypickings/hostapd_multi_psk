@@ -57,10 +57,18 @@ struct mode_a_handler_data {
     uint32_t time;
 };
 
-static bool mode_a_handler(multi_psk_line_t *block, size_t num_lines, void *_data)
+static bool mode_a_handler(uint32_t block_id, multi_psk_line_t *block, size_t num_lines, void *_data)
 {
     struct mode_a_handler_data *data = _data;
     multi_psk_line_t *i;
+    for(i = block; i < block + num_lines; i++) {
+        if(memcmp(i->pmk, data->pmk, 32) == 0) {
+            i->is_valid = true;
+            i->time = data->time;
+            wpa_printf(MSG_INFO, "Multi PSK: Mode_A Update PMK, expire time: %u", i->time);
+            return false;
+        }
+    }
     for(i = block; i < block + num_lines; i++) {
         if(!i->is_valid) break;
     }
@@ -71,7 +79,7 @@ static bool mode_a_handler(multi_psk_line_t *block, size_t num_lines, void *_dat
     i->is_valid = true;
     i->time = data->time;
     memcpy(i->pmk, data->pmk, 32);
-    wpa_printf(MSG_INFO, "Multi PSK: Add 1 Client!");
+    wpa_printf(MSG_INFO, "Multi PSK: Mode_A Add PMK, expire time: %u", i->time);
     return false;
 }
 
@@ -111,9 +119,8 @@ static void *mode_a_server(void *arg)
         char buf[100];
         assert(SSL_read(ssl, buf, 100) > 0);
         struct mode_a_handler_data data;
-        uint32_t time;
         char passphrase[100];
-        sscanf(buf, "%u %s", &time, passphrase);
+        sscanf(buf, "%u %s", &data.time, passphrase);
         pbkdf2_sha1(passphrase, server_ctx->ssid, server_ctx->ssid_len, 4096, data.pmk, PMK_LEN);
         multi_psk_visit_block(&mode_a_handler, &data);
         sprintf(buf, "Done\n");

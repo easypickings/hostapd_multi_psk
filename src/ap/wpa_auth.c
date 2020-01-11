@@ -30,6 +30,7 @@
 #include "pmksa_cache_auth.h"
 #include "wpa_auth_i.h"
 #include "wpa_auth_ie.h"
+#include "hostapd.h"
 
 #define STATE_MACHINE_DATA struct wpa_state_machine
 #define STATE_MACHINE_DEBUG_PREFIX "WPA"
@@ -112,15 +113,22 @@ static inline int wpa_auth_get_eapol(struct wpa_authenticator *wpa_auth,
 
 
 static inline const u8 * wpa_auth_get_psk(struct wpa_authenticator *wpa_auth,
-					  const u8 *addr,
-					  const u8 *p2p_dev_addr,
-					  const u8 *prev_psk, size_t *psk_len,
-					  int *vlan_id)
+                      const u8 *addr,
+                      const u8 *p2p_dev_addr,
+                      const u8 *prev_psk, size_t *psk_len,
+                      int *vlan_id)
 {
-	if (wpa_auth->cb->get_psk == NULL)
-		return NULL;
-	return wpa_auth->cb->get_psk(wpa_auth->cb_ctx, addr, p2p_dev_addr,
-				     prev_psk, psk_len, vlan_id);
+    if (wpa_auth->cb->get_psk == NULL)
+        return NULL;
+    return wpa_auth->cb->get_psk(wpa_auth->cb_ctx, addr, p2p_dev_addr,
+                     prev_psk, psk_len, vlan_id);
+}
+
+
+static inline const bool wpa_auth_use_multi_psk(struct wpa_authenticator *wpa_auth)
+{
+    struct hostapd_data *hapd = wpa_auth->cb_ctx;
+    return hapd->conf->ssid.wpa_pre_psk != 0;
 }
 
 
@@ -335,11 +343,15 @@ void wpa_auth_set_ptk_rekey_timer(struct wpa_state_machine *sm)
 int wpa_check_sta(struct wpa_state_machine *sm, uint32_t now)
 {
     multi_psk_line_t *wpa_line = sm->wpa_line;
-    if (os_strcmp(wpa_line->pmk, sm->PMK) || !wpa_line->is_valid){
+    if(!wpa_line) {
+        return 0;
+    }
+    if(os_strcmp(wpa_line->pmk, sm->PMK) || !wpa_line->is_valid){
         return 1;
     }
-    if(now <= wpa_line->time){
+    if(now >= wpa_line->time){
         wpa_line->is_valid = 0;
+        wpa_printf(MSG_INFO, "Multi PSK: PMK expired, current time: %u", now);
         return 1;
     }
     return 0;
@@ -2082,11 +2094,16 @@ SM_STATE(WPA_PTK, INITPSK)
 	size_t psk_len;
 
 	SM_ENTRY_MA(WPA_PTK, INITPSK, wpa_ptk);
-	psk = wpa_auth_get_psk(sm->wpa_auth, sm->addr, sm->p2p_dev_addr, NULL,
-			       &psk_len, NULL);
-	if (psk) {
-		os_memcpy(sm->PMK, psk, psk_len);
-		sm->pmk_len = psk_len;
+
+    if(wpa_auth_use_multi_psk(sm->wpa_auth)) {
+        psk_len = PMK_LEN;
+    } else {
+        psk = wpa_auth_get_psk(sm->wpa_auth, sm->addr, sm->p2p_dev_addr, NULL,
+                       &psk_len, NULL);
+        if (psk) {
+            os_memcpy(sm->PMK, psk, psk_len);
+            sm->pmk_len = psk_len;
+        }
 #ifdef CONFIG_IEEE80211R_AP
 		os_memcpy(sm->xxkey, psk, PMK_LEN);
 		sm->xxkey_len = PMK_LEN;
@@ -2839,63 +2856,84 @@ SM_STATE(WPA_PTK, PTKCALCNEGOTIATING)
 
 	mic_len = wpa_mic_len(sm->wpa_key_mgmt, sm->pmk_len);
 
-	/* WPA with IEEE 802.1X: use the derived PMK from EAP
-	 * WPA-PSK: iterate through possible PSKs and select the one matching
-	 * the packet */
-	for (;;) {
-		if (wpa_key_mgmt_wpa_psk(sm->wpa_key_mgmt) &&
-		    !wpa_key_mgmt_sae(sm->wpa_key_mgmt)) {
-			pmk = wpa_auth_get_psk(sm->wpa_auth, sm->addr,
-					       sm->p2p_dev_addr, pmk, &pmk_len,
-					       &vlan_id);
-			if (pmk == NULL)
-				break;
-			psk_found = 1;
-#ifdef CONFIG_IEEE80211R_AP
-			if (wpa_key_mgmt_ft_psk(sm->wpa_key_mgmt)) {
-				os_memcpy(sm->xxkey, pmk, pmk_len);
-				sm->xxkey_len = pmk_len;
-			}
-#endif /* CONFIG_IEEE80211R_AP */
-		} else {
-			pmk = sm->PMK;
-			pmk_len = sm->pmk_len;
-		}
+    if(wpa_auth_use_multi_psk(wpa_auth)) {
+        sm->wpa_line = multi_psk_enum(sm->last_rx_eapol_key, sm->last_rx_eapol_key_len,
+                                      sm->ANonce, sm->SNonce, sm->wpa_auth->addr, sm->addr,
+                                      sm->wpa_key_mgmt, sm->pairwise);
+        if (sm->wpa_line && sm->PMK != sm->wpa_line->pmk) {
+            pmk = sm->wpa_line->pmk;
+            pmk_len = PMK_LEN;
+            os_memcpy(sm->PMK, pmk, pmk_len);
+            sm->pmk_len = pmk_len;
+            //Double check
+            if (wpa_derive_ptk(sm, sm->SNonce, pmk, pmk_len, &PTK) < 0)
+                wpa_printf(MSG_ERROR, "Multi PSK enum wrong PMK!");
 
-		if ((!pmk || !pmk_len) && sm->pmksa) {
-			wpa_printf(MSG_DEBUG, "WPA: Use PMK from PMKSA cache");
-			pmk = sm->pmksa->pmk;
-			pmk_len = sm->pmksa->pmk_len;
-		}
+            if (wpa_verify_key_mic(sm->wpa_key_mgmt, pmk_len, &PTK,
+                           sm->last_rx_eapol_key,
+                           sm->last_rx_eapol_key_len))
+                wpa_printf(MSG_ERROR, "Multi PSK enum wrong PMK!");
+            ok = 1;
+        }
+    } else {
+        /* WPA with IEEE 802.1X: use the derived PMK from EAP
+         * WPA-PSK: iterate through possible PSKs and select the one matching
+         * the packet */
+        for (;;) {
+            if (wpa_key_mgmt_wpa_psk(sm->wpa_key_mgmt) &&
+                !wpa_key_mgmt_sae(sm->wpa_key_mgmt)) {
+                pmk = wpa_auth_get_psk(sm->wpa_auth, sm->addr,
+                               sm->p2p_dev_addr, pmk, &pmk_len,
+                               &vlan_id);
+                if (pmk == NULL)
+                    break;
+                psk_found = 1;
+    #ifdef CONFIG_IEEE80211R_AP
+                if (wpa_key_mgmt_ft_psk(sm->wpa_key_mgmt)) {
+                    os_memcpy(sm->xxkey, pmk, pmk_len);
+                    sm->xxkey_len = pmk_len;
+                }
+    #endif /* CONFIG_IEEE80211R_AP */
+            } else {
+                pmk = sm->PMK;
+                pmk_len = sm->pmk_len;
+            }
 
-		if (wpa_derive_ptk(sm, sm->SNonce, pmk, pmk_len, &PTK) < 0)
-			break;
+            if ((!pmk || !pmk_len) && sm->pmksa) {
+                wpa_printf(MSG_DEBUG, "WPA: Use PMK from PMKSA cache");
+                pmk = sm->pmksa->pmk;
+                pmk_len = sm->pmksa->pmk_len;
+            }
 
-		if (mic_len &&
-		    wpa_verify_key_mic(sm->wpa_key_mgmt, pmk_len, &PTK,
-				       sm->last_rx_eapol_key,
-				       sm->last_rx_eapol_key_len) == 0) {
-			if (sm->PMK != pmk) {
-				os_memcpy(sm->PMK, pmk, pmk_len);
-				sm->pmk_len = pmk_len;
-			}
-			ok = 1;
-			break;
-		}
+            if (wpa_derive_ptk(sm, sm->SNonce, pmk, pmk_len, &PTK) < 0)
+                break;
 
-#ifdef CONFIG_FILS
-		if (!mic_len &&
-		    wpa_aead_decrypt(sm, &PTK, sm->last_rx_eapol_key,
-				     sm->last_rx_eapol_key_len, NULL) == 0) {
-			ok = 1;
-			break;
-		}
-#endif /* CONFIG_FILS */
+            if (mic_len &&
+                wpa_verify_key_mic(sm->wpa_key_mgmt, pmk_len, &PTK,
+                           sm->last_rx_eapol_key,
+                           sm->last_rx_eapol_key_len) == 0) {
+                if (sm->PMK != pmk) {
+                    os_memcpy(sm->PMK, pmk, pmk_len);
+                    sm->pmk_len = pmk_len;
+                }
+                ok = 1;
+                break;
+            }
 
-		if (!wpa_key_mgmt_wpa_psk(sm->wpa_key_mgmt) ||
-		    wpa_key_mgmt_sae(sm->wpa_key_mgmt))
-			break;
-	}
+    #ifdef CONFIG_FILS
+            if (!mic_len &&
+                wpa_aead_decrypt(sm, &PTK, sm->last_rx_eapol_key,
+                         sm->last_rx_eapol_key_len, NULL) == 0) {
+                ok = 1;
+                break;
+            }
+    #endif /* CONFIG_FILS */
+
+            if (!wpa_key_mgmt_wpa_psk(sm->wpa_key_mgmt) ||
+                wpa_key_mgmt_sae(sm->wpa_key_mgmt))
+                break;
+        }
+    }
 
 	if (!ok) {
 		wpa_auth_logger(sm->wpa_auth, sm->addr, LOGGER_DEBUG,
@@ -3465,9 +3503,11 @@ SM_STEP(WPA_PTK)
 		}
 		break;
 	case WPA_PTK_INITPSK:
-		if (wpa_auth_get_psk(sm->wpa_auth, sm->addr, sm->p2p_dev_addr,
-				     NULL, NULL, NULL)) {
-			SM_ENTER(WPA_PTK, PTKSTART);
+        if (wpa_auth_use_multi_psk(wpa_auth)) {
+            SM_ENTER(WPA_PTK, PTKSTART);
+        } else if (wpa_auth_get_psk(sm->wpa_auth, sm->addr, sm->p2p_dev_addr,
+                     NULL, NULL, NULL)) {
+            SM_ENTER(WPA_PTK, PTKSTART);
 #ifdef CONFIG_SAE
 		} else if (wpa_auth_uses_sae(sm) && sm->pmksa) {
 			SM_ENTER(WPA_PTK, PTKSTART);
