@@ -16,7 +16,8 @@ void multi_psk_init(const uint8_t *pre_psk, size_t pre_psk_len, const uint8_t *s
 
 multi_psk_line_t *multi_psk_enum(const uint8_t *data, size_t data_len,
                                  const uint8_t ANonce[128], const uint8_t SNonce[128],
-                                 const uint8_t AA[6], const uint8_t SPA[6]);
+                                 const uint8_t AA[6], const uint8_t SPA[6],
+                                 int akmp, int cipher);
 
 typedef bool (*multi_psk_visit_block_handler)(uint32_t block_id, multi_psk_line_t *block, size_t num_lines, void *data);
 // Return true if want to visit next block.
