@@ -346,7 +346,7 @@ int wpa_check_sta(struct wpa_state_machine *sm, uint32_t now)
     if(!wpa_line) {
         return 0;
     }
-    if(os_strcmp(wpa_line->pmk, sm->PMK) || !wpa_line->is_valid){
+    if(os_memcmp(wpa_line->pmk, sm->PMK, PMK_LEN) || !wpa_line->is_valid){
         return 1;
     }
     if(now >= wpa_line->time){
