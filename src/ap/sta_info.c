@@ -423,7 +423,6 @@ void hostapd_check_stas(struct hostapd_data *hapd, uint32_t now)
         sta = sta->next;
         if(!prev->wpa_sm) continue;
         int res = wpa_check_sta(prev->wpa_sm, now);
-        printf("res = %d\n", res);
         if (res){
             remove_sta(hapd, prev);
         }

@@ -6,18 +6,29 @@
 #include "common/eapol_common.h"
 #include "utils/common.h"
 
-static multi_psk_line_t block[128];
+#define NUM_LINE 256
+#define NUM_BLOCK 20
+
+static multi_psk_line_t blocks[NUM_BLOCK][NUM_LINE];
 
 void multi_psk_init(const uint8_t *pre_psk, size_t pre_psk_len,
                     const uint8_t *ssid, size_t ssid_len)
 {
-    printf("sizeof multi_psk_line_t: %lu\n", sizeof(multi_psk_line_t));
-    multi_psk_fill_block(block, 128, 0, pre_psk, pre_psk_len, ssid, ssid_len);
+    multi_psk_fill_block(blocks[0], NUM_LINE, 0, pre_psk, pre_psk_len, ssid, ssid_len);
+    uint32_t block_id = time(0) / (24 * 60 * 60);
+    printf("Multi PSK: Fill block begin ");
+    fflush(stdout);
+    for(int i = 0; i < NUM_BLOCK - 1; i++) {
+        multi_psk_fill_block(blocks[i + 1], NUM_LINE, block_id + i, pre_psk, pre_psk_len, ssid, ssid_len);
+        printf(".");
+        fflush(stdout);
+    }
+    printf(" done\n");
 }
 
 void multi_psk_visit_block(multi_psk_visit_block_handler handler, void *data)
 {
-    handler(0, block, 128, data);
+    handler(0, blocks[0], NUM_LINE, data);
 }
 
 multi_psk_line_t *multi_psk_enum(const uint8_t *const_data, size_t data_len,
@@ -38,20 +49,22 @@ multi_psk_line_t *multi_psk_enum(const uint8_t *const_data, size_t data_len,
     key_info = WPA_GET_BE16(key->key_info);
     memcpy(mic, mic_pos, mic_len);
     uint32_t now = time(0) / (60 * 60);
-    for(multi_psk_line_t *line = block; line < block + 128; line++) {
-        if(!line->is_valid || line->time <= now) continue;
-        struct wpa_ptk PTK;
-        wpa_pmk_to_ptk(line->pmk, 32, "Pairwise key expansion",
-                       AA, SPA, ANonce, SNonce,
-                       &PTK, akmp, cipher, NULL, 0);
-        memset(mic_pos, 0, mic_len);
-        if(wpa_eapol_key_mic(PTK.kck, PTK.kck_len, akmp,
-                      key_info & WPA_KEY_INFO_TYPE_MASK,
-                      data, data_len, mic_pos))
-            continue;
-        if(memcmp(mic, mic_pos, mic_len) != 0)
-            continue;
-        return line;
+    for(uint32_t block_id = 0; block_id < NUM_BLOCK; block_id++) {
+        for(multi_psk_line_t *line = blocks[block_id]; line < blocks[block_id] + NUM_LINE; line++) {
+            if(!line->is_valid || line->time <= now) continue;
+            struct wpa_ptk PTK;
+            wpa_pmk_to_ptk(line->pmk, 32, "Pairwise key expansion",
+                           AA, SPA, ANonce, SNonce,
+                           &PTK, akmp, cipher, NULL, 0);
+            memset(mic_pos, 0, mic_len);
+            if(wpa_eapol_key_mic(PTK.kck, PTK.kck_len, akmp,
+                          key_info & WPA_KEY_INFO_TYPE_MASK,
+                          data, data_len, mic_pos))
+                continue;
+            if(memcmp(mic, mic_pos, mic_len) != 0)
+                continue;
+            return line;
+        }
     }
     return NULL;
 }

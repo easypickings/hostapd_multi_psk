@@ -156,14 +156,17 @@ void multi_psk_fill_block(multi_psk_line_t *block, size_t num_lines, uint32_t bl
         char psk[pre_psk_len + 40];
         memset(psk, 0, sizeof(psk));
         for(uint32_t seq = 0; seq < num_lines; seq++) {
-            uint32_t time = block_id * 24 + (seq * 24 / num_lines);
-            sprintf(psk + pre_psk_len, "#%010u#%010u", seq, time);
+            uint32_t time = block_id * 24 + seq * 24 / num_lines;
+            uint32_t curr_seq = seq - seq * 24 / num_lines * num_lines / 24;
+            sprintf(psk + pre_psk_len, "#%010u#%010u", curr_seq, time);
             assert(SHA256_Init(&sha256));
             assert(SHA256_Update(&sha256, psk, sizeof(psk)));
             assert(SHA256_Final(hash, &sha256));
-            pbkdf2_sha1(generate_psk(hash), ssid, ssid_len, 4096, block[seq].pmk, PMK_LEN);
+            const char *psk = generate_psk(hash);
+            pbkdf2_sha1(psk, ssid, ssid_len, 4096, block[seq].pmk, PMK_LEN);
             block[seq].seq = seq;
             block[seq].time = time;
+            block[seq].is_valid = true;
         }
     }
 }
