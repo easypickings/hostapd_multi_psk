@@ -6,6 +6,10 @@ ifndef CFLAGS
 CFLAGS = -MMD -O2 -Wall -g
 endif
 
+ifndef CXX
+CXX=g++
+endif
+
 LIBS += -lpthread
 
 ifdef LIBS
@@ -26,6 +30,8 @@ endif
 CFLAGS += $(EXTRA_CFLAGS)
 CFLAGS += -I$(abspath ../src)
 CFLAGS += -I$(abspath ../src/utils)
+
+CXXFLAGS = $(CFLAGS) -std=c++17
 
 export BINDIR ?= /usr/local/bin/
 
@@ -89,7 +95,11 @@ OBJS += ../src/ap/bss_load.o
 OBJS += ../src/ap/neighbor_db.o
 OBJS += ../src/ap/rrm.o
 OBJS += ../src/ap/wpa_auth_multi_block.o
+ifdef SINGLE_THREADED
 OBJS += ../src/ap/wpa_auth_multi.o
+else
+OBJS += ../src/ap/wpa_auth_multi.cpp.o
+endif
 
 OBJS_c = hostapd_cli.o
 OBJS_c += ../src/common/wpa_ctrl.o
@@ -1288,6 +1298,10 @@ Q=@
 E=true
 endif
 
+%.cpp.o: %.cpp
+	$(Q)$(CXX) -c -o $@ $(CXXFLAGS) $<
+	@$(E) "  CXX " $<
+
 ifdef CONFIG_CODE_COVERAGE
 %.o: %.c
 	@$(E) "  CC " $<
@@ -1321,7 +1335,7 @@ install: $(addprefix $(DESTDIR)$(BINDIR)/,$(ALL))
 BCHECK=../src/drivers/build.hostapd
 
 hostapd: $(BCHECK) $(OBJS)
-	$(Q)$(CC) $(LDFLAGS) -o hostapd $(OBJS) $(LIBS)
+	$(Q)$(CXX) $(LDFLAGS) -o hostapd $(OBJS) $(LIBS)
 	@$(E) "  LD " $@
 
 ifdef CONFIG_WPA_TRACE
