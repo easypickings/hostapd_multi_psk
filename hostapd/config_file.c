@@ -2365,6 +2365,9 @@ fail:
 #endif /* CONFIG_DPP2 */
 
 
+void multi_psk_init(const uint8_t*, size_t, const uint8_t*, size_t);
+
+
 static int hostapd_config_fill(struct hostapd_config *conf,
 			       struct hostapd_bss_config *bss,
 			       const char *buf, char *pos, int line)
@@ -2951,7 +2954,7 @@ static int hostapd_config_fill(struct hostapd_config *conf,
         }
 
         // multi_psk_init: can we do it elsewhere?
-        multi_psk_init(bss->ssid.wpa_pre_psk, len, bss->ssid.ssid, bss->ssid.ssid_len);
+        multi_psk_init((u8*) bss->ssid.wpa_pre_psk, len, bss->ssid.ssid, bss->ssid.ssid_len);
 	} else if (os_strcmp(buf, "wpa_psk_file") == 0) {
 		os_free(bss->ssid.wpa_psk_file);
 		bss->ssid.wpa_psk_file = os_strdup(pos);
