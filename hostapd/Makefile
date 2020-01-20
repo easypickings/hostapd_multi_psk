@@ -95,11 +95,11 @@ OBJS += ../src/ap/bss_load.o
 OBJS += ../src/ap/neighbor_db.o
 OBJS += ../src/ap/rrm.o
 OBJS += ../src/ap/wpa_auth_multi_block.o
-ifdef SINGLE_THREADED
-OBJS += ../src/ap/wpa_auth_multi.o
-else
-OBJS += ../src/ap/wpa_auth_multi.cpp.o
-endif
+# ifdef SINGLE_THREADED
+# OBJS += ../src/ap/wpa_auth_multi.o
+# else
+# OBJS += ../src/ap/wpa_auth_multi.cpp.o
+# endif
 
 OBJS_c = hostapd_cli.o
 OBJS_c += ../src/common/wpa_ctrl.o
@@ -1283,7 +1283,7 @@ OBJS += ../src/fst/fst_ctrl_iface.o
 endif
 endif
 
-ALL=hostapd hostapd_cli hostapd_wpa_multi_client
+ALL=hostapd hostapd-threaded hostapd_cli hostapd_wpa_multi_client
 
 all: verify_config $(ALL)
 
@@ -1334,8 +1334,12 @@ install: $(addprefix $(DESTDIR)$(BINDIR)/,$(ALL))
 
 BCHECK=../src/drivers/build.hostapd
 
-hostapd: $(BCHECK) $(OBJS)
-	$(Q)$(CXX) $(LDFLAGS) -o hostapd $(OBJS) $(LIBS)
+hostapd: $(BCHECK) $(OBJS) ../src/ap/wpa_auth_multi.o
+	$(Q)$(CXX) $(LDFLAGS) -o $@ $(OBJS) ../src/ap/wpa_auth_multi.o $(LIBS)
+	@$(E) "  LD " $@
+
+hostapd-threaded: $(BCHECK) $(OBJS) ../src/ap/wpa_auth_multi.cpp.o
+	$(Q)$(CXX) $(LDFLAGS) -o $@ $(OBJS) ../src/ap/wpa_auth_multi.cpp.o $(LIBS)
 	@$(E) "  LD " $@
 
 ifdef CONFIG_WPA_TRACE
