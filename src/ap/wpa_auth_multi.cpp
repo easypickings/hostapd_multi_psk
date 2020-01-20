@@ -7,9 +7,11 @@ extern "C"
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <iomanip>
 #include <iostream>
 #include <mutex>
 #include <shared_mutex>
+#include <sstream>
 #include <thread>
 #include <vector>
 
@@ -34,6 +36,32 @@ constexpr size_t lines_cnt = 256;
 
 constexpr uint32_t mode_A_id = 0;
 
+struct Sync
+{
+    Sync(std::ostream& target) : target{target}
+    {
+    }
+    ~Sync()
+    {
+        target << oss.str() << std::flush;
+    }
+
+    template <typename T> Sync& operator<<(T&& val)
+    {
+        oss << std::forward<T>(val);
+        return *this;
+    }
+
+    Sync& operator<<(std::ostream& (*f)(std::ostream&))
+    {
+        f(oss);
+        return *this;
+    }
+
+    std::ostringstream oss;
+    std::ostream& target;
+};
+
 struct block
 {
     block() = default;
@@ -50,21 +78,16 @@ block block_A;
 std::vector<block> blocks_B;
 std::vector<std::thread> workers;
 
-struct [[gnu::packed]] request_data
-{
-    ieee802_1x_hdr header;
-    wpa_eapol_key key;
-    std::array<uint8_t, WPA_EAPOL_KEY_MIC_MAX_LEN> mic;
-};
-
 struct user_info
 {
-    request_data data;
+    std::vector<uint8_t> data;
     size_t data_len;
-    std::array<uint8_t, 128> ANonce;
-    std::array<uint8_t, 128> SNonce;
-    std::array<uint8_t, 6> AA;
-    std::array<uint8_t, 6> SPA;
+    std::vector<uint8_t> mic;
+    size_t mic_len;
+    const uint8_t* ANonce;
+    const uint8_t* SNonce;
+    const uint8_t* AA;
+    const uint8_t* SPA;
     int akmp;
     int cipher;
 };
@@ -78,29 +101,44 @@ std::atomic<int> busy;
 std::mutex mtxWait;
 std::condition_variable cvWait;
 
-bool check_req(user_info& info, multi_psk_line_t& line)
+uint8_t* get_mic(const uint8_t* data)
 {
-    const auto key_info = WPA_GET_BE16(current_req.data.key.key_info);
+    const auto hdr = (struct ieee802_1x_hdr*)data;
+    const auto key = (struct wpa_eapol_key*)(hdr + 1);
+    const auto mic_pos = (uint8_t*)(key + 1);
+    return mic_pos;
+}
+
+uint16_t get_key_info(const uint8_t* data)
+{
+    const auto hdr = (struct ieee802_1x_hdr*)data;
+    const auto key = (struct wpa_eapol_key*)(hdr + 1);
+    const auto key_info = WPA_GET_BE16(key->key_info);
+    return key_info;
+}
+
+bool check_req(const user_info& info, const multi_psk_line_t& line)
+{
+    const auto key_info = get_key_info(info.data.data());
     wpa_ptk ptk{};
-    wpa_pmk_to_ptk(line.pmk, sizeof(line.pmk), "Pairwise key expansion",
-                   current_req.AA.data(), current_req.SPA.data(),
-                   current_req.ANonce.data(), current_req.SNonce.data(),
-                   std::addressof(ptk), current_req.akmp, current_req.cipher,
+    wpa_pmk_to_ptk(line.pmk, 32, "Pairwise key expansion", info.AA, info.SPA,
+                   info.ANonce, info.SNonce, &ptk, info.akmp, info.cipher,
                    nullptr, 0);
     std::array<uint8_t, WPA_EAPOL_KEY_MIC_MAX_LEN> mic{};
-    const size_t mic_len = wpa_mic_len(current_req.akmp, sizeof(line.pmk));
-    if (wpa_eapol_key_mic(ptk.kck, ptk.kck_len, current_req.akmp,
-                          key_info & WPA_KEY_INFO_TYPE_MASK,
-                          reinterpret_cast<uint8_t*>(&current_req.data),
-                          current_req.data_len, mic.data()))
+    const size_t mic_len = current_req.mic_len;
+
+    if (wpa_eapol_key_mic(ptk.kck, ptk.kck_len, info.akmp,
+                          key_info & WPA_KEY_INFO_TYPE_MASK, info.data.data(),
+                          info.data_len, mic.data()))
         return false;
-    return std::equal(mic.data(), mic.data() + mic_len,
-                      current_req.data.mic.data());
+
+    return std::equal(mic.data(), mic.data() + mic_len, current_req.mic.data());
 }
 
 void worker_thread(block& blk)
 {
     uint32_t serial{0};
+    Sync(std::cout) << "Thread " << blk.id << " starts." << std::endl;
     while (blk.busy.load(std::memory_order_seq_cst))
     {
         std::shared_lock lock{mtxWorkers};
@@ -113,8 +151,8 @@ void worker_thread(block& blk)
 
             for (auto& ln : blk.lines)
             {
-                if (!check_result.load()) break;
-                if (ln.is_valid || ln.time <= now_time) continue;
+                if (check_result.load()) break;
+                if (!ln.is_valid || ln.time <= now_time) continue;
                 if (check_req(current_req, ln))
                 {
                     check_result.store(&ln, std::memory_order_seq_cst);
@@ -123,9 +161,12 @@ void worker_thread(block& blk)
             }
 
             --busy;
+
+            serial = global_serial;
         }
         cvWait.notify_one();
     }
+    Sync(std::cout) << "Thread " << blk.id << " quits." << std::endl;
 }
 
 } // namespace
@@ -182,20 +223,34 @@ multi_psk_line_t* multi_psk_enum(const uint8_t* data, size_t data_len,
     std::unique_lock lock{mtxWait};
     cvWait.wait(lock, [] { return busy.load() == 0; });
 
-    std::copy(data, data + data_len,
-              reinterpret_cast<uint8_t*>(&current_req.data));
+    if (data_len < sizeof(ieee802_1x_hdr) + sizeof(wpa_eapol_key))
+        return nullptr;
+
+    current_req.data.resize(data_len);
+    std::copy(data, data + data_len, current_req.data.data());
+    current_req.mic_len = wpa_mic_len(akmp, 32);
+    current_req.mic.resize(current_req.mic_len);
+    const auto mic = get_mic(current_req.data.data());
+    std::copy(mic, mic + current_req.mic_len, current_req.mic.data());
+    std::fill_n(mic, current_req.mic_len, 0);
     current_req.data_len = data_len;
-    std::copy(ANonce, ANonce + 128, current_req.ANonce.data());
-    std::copy(SNonce, SNonce + 128, current_req.SNonce.data());
-    std::copy(AA, AA + 128, current_req.AA.data());
-    std::copy(SPA, SPA + 128, current_req.SPA.data());
+    current_req.ANonce = ANonce;
+    current_req.SNonce = SNonce;
+    current_req.AA = AA;
+    current_req.SPA = SPA;
     current_req.akmp = akmp;
     current_req.cipher = cipher;
 
+    check_result.store(nullptr, std::memory_order_seq_cst);
     busy.store(workers.size());
     ++global_serial;
     cvWorkers.notify_all();
-    cvWait.wait(lock, [] { return busy.load() == 0; });
+    cvWait.wait(lock, [] {
+        auto busy_val = busy.load();
+        Sync(std::cout) << "multi_psk_enum wakes up: busy = " << busy_val
+                        << std::endl;
+        return busy_val == 0;
+    });
 
     return check_result.load();
 }
