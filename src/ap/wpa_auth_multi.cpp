@@ -184,17 +184,21 @@ void multi_psk_init(const uint8_t* pre_psk, size_t pre_psk_len,
     const auto now_hour = std::chrono::duration_cast<std::chrono::hours>(now);
     uint32_t block_id = now_hour.count() / 24;
 
-    std::cout << "Multi PSK: Filling blocks " << std::flush;
     blocks_B.resize(blocks_cnt);
+    std::vector<std::thread> thds;
+    thds.reserve(blocks_cnt);
+    std::cout << "Multi PSK: Filling blocks " << std::flush;
     for (auto& blk : blocks_B)
-    {
-        blk.lines.resize(lines_cnt);
-        blk.id = block_id++;
-        blk.busy.store(true, std::memory_order_seq_cst);
-        multi_psk_fill_block(blk.lines.data(), blk.lines.size(), blk.id,
-                             pre_psk, pre_psk_len, ssid, ssid_len);
-        std::cout << '.' << std::flush;
-    }
+        thds.emplace_back([&] {
+            blk.lines.resize(lines_cnt);
+            blk.id = block_id++;
+            blk.busy.store(true, std::memory_order_seq_cst);
+            multi_psk_fill_block(blk.lines.data(), blk.lines.size(), blk.id,
+                                 pre_psk, pre_psk_len, ssid, ssid_len);
+            std::cout << '.' << std::flush;
+        });
+    for (auto& t : thds)
+        t.join();
     std::cout << " done" << std::endl;
 
     check_result.store(nullptr, std::memory_order_seq_cst);
